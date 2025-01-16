@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aplicación de Proformas</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .hidden {
+            display: none;
+        }
+        form {
+            margin-bottom: 20px;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        table, th, td {
+            border: 1px solid black;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+    <h1>Aplicación de Proformas</h1>
+
+    <div id="menu">
+        <button onclick="showRegister()">Registrar Usuario</button>
+        <button onclick="showLogin()">Iniciar Sesión</button>
+        <button onclick="exitApp()">Salir</button>
+    </div>
+
+    <div id="register" class="hidden">
+        <h2>Registrar Usuario</h2>
+        <form id="registerForm">
+            <label for="registerUsername">Usuario:</label>
+            <input type="text" id="registerUsername">
+            <br>
+            <label for="registerPassword">Contraseña:</label>
+            <input type="password" id="registerPassword">
+            <br>
+            <button type="button" onclick="registerUser()">Registrar</button>
+        </form>
+    </div>
+
+    <div id="login" class="hidden">
+        <h2>Iniciar Sesión</h2>
+        <form id="loginForm">
+            <label for="loginUsername">Usuario:</label>
+            <input type="text" id="loginUsername">
+            <br>
+            <label for="loginPassword">Contraseña:</label>
+            <input type="password" id="loginPassword">
+            <br>
+            <button type="button" onclick="loginUser()">Iniciar Sesión</button>
+        </form>
+    </div>
+
+    <div id="app" class="hidden">
+        <h2>Bienvenido, <span id="welcomeUser"></span>!</h2>
+        <button onclick="showCreateProforma()">1. Crear Proforma</button>
+        <button onclick="showProformas()">2. Revisar Proformas</button>
+        <button onclick="showDeleteProforma()">3. Eliminar Proformas</button>
+        <button onclick="showMaterialManager()">4. Gestionar Materiales</button>
+
+        <div id="createProforma" class="hidden">
+            <h3>Crear Proforma</h3>
+            <form id="proformaForm">
+                <label for="clientName">Nombre del Cliente:</label>
+                <input type="text" id="clientName" required>
+                <br>
+                <label>Seleccionar Materiales:</label>
+                <div id="materialSelection"></div>
+                <br>
+                <p id="totalCost">Costo Total: $0</p>
+                <button type="button" onclick="saveProforma()">Guardar Proforma</button>
+            </form>
+        </div>
+
+        <div id="viewProformas" class="hidden">
+            <h3>Revisar Proformas</h3>
+            <div id="proformasList"></div>
+        </div>
+
+        <div id="deleteProformas" class="hidden">
+            <h3>Eliminar Proformas</h3>
+            <ul id="deleteProformasList"></ul>
+        </div>
+
+        <div id="materialManager" class="hidden">
+            <h3>Gestionar Materiales</h3>
+            <form id="materialForm">
+                <label for="materialName">Material:</label>
+                <input type="text" id="materialName">
+                <br>
+                <label for="materialPrice">Precio:</label>
+                <input type="text" id="materialPrice">
+                <br>
+                <button type="button" onclick="addMaterial()">Agregar Material</button>
+            </form>
+            <ul id="materialList"></ul>
+        </div>
+    </div>
+
+    <script>
+        let users = [];
+        let currentUser = null;
+        let proformas = [];
+        let materials = [];
+
+        function showRegister() {
+            document.getElementById('register').classList.remove('hidden');
+            document.getElementById('login').classList.add('hidden');
+        }
+
+        function showLogin() {
+            document.getElementById('login').classList.remove('hidden');
+            document.getElementById('register').classList.add('hidden');
+        }
+
+        function registerUser() {
+            const username = document.getElementById('registerUsername').value;
+            const password = document.getElementById('registerPassword').value;
+
+            if (!username || !password) {
+                alert('Por favor complete todos los campos.');
+                return;
+            }
+
+            users.push({ username, password });
+            alert('Usuario registrado con éxito');
+            document.getElementById('registerForm').reset();
+        }
+
+        function loginUser() {
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+
+            if (!username || !password) {
+                alert('Por favor complete todos los campos.');
+                return;
+            }
+
+            const user = users.find(u => u.username === username && u.password === password);
+            if (user) {
+                currentUser = user;
+                document.getElementById('welcomeUser').textContent = currentUser.username;
+                document.getElementById('app').classList.remove('hidden');
+                document.getElementById('menu').classList.add('hidden');
+                document.getElementById('login').classList.add('hidden');
+            } else {
+                alert('Usuario no registrado.');
+            }
+        }
+
+        function showCreateProforma() {
+            document.getElementById('createProforma').classList.remove('hidden');
+            document.getElementById('viewProformas').classList.add('hidden');
+            document.getElementById('materialManager').classList.add('hidden');
+            document.getElementById('deleteProformas').classList.add('hidden');
+
+            const materialSelection = document.getElementById('materialSelection');
+            materialSelection.innerHTML = '';
+
+            materials.forEach((material, index) => {
+                const div = document.createElement('div');
+
+                const label = document.createElement('label');
+                label.textContent = `${material.name} ($${material.price}): `;
+
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.min = 0;
+                input.dataset.index = index;
+                input.addEventListener('input', calculateTotalCost);
+
+                div.appendChild(label);
+                div.appendChild(input);
+                materialSelection.appendChild(div);
+            });
+        }
+
+        function calculateTotalCost() {
+            let totalCost = 0;
+            const inputs = document.querySelectorAll('#materialSelection input');
+
+            inputs.forEach(input => {
+                const quantity = parseFloat(input.value) || 0;
+                const material = materials[input.dataset.index];
+                totalCost += quantity * parseFloat(material.price);
+            });
+
+            document.getElementById('totalCost').textContent = `Costo Total: $${totalCost.toFixed(2)}`;
+        }
+
+        function showProformas() {
+            document.getElementById('viewProformas').classList.remove('hidden');
+            document.getElementById('createProforma').classList.add('hidden');
+            document.getElementById('materialManager').classList.add('hidden');
+            document.getElementById('deleteProformas').classList.add('hidden');
+
+            const list = document.getElementById('proformasList');
+            list.innerHTML = '';
+
+            proformas.forEach((proforma, index) => {
+                const div = document.createElement('div');
+                div.innerHTML = `
+                    <h4>Proforma ${index + 1}</h4>
+                    <p><strong>Cliente:</strong> ${proforma.clientName}</p>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Material</th>
+                                <th>Cantidad</th>
+                                <th>Costo</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${proforma.materials.map(material => `
+                                <tr>
+                                    <td>${material.name}</td>
+                                    <td>${material.quantity}</td>
+                                    <td>$${(material.quantity * material.price).toFixed(2)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                    <p><strong>Total:</strong> $${proforma.total.toFixed(2)}</p>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        function showDeleteProforma() {
+            document.getElementById('deleteProformas').classList.remove('hidden');
+            document.getElementById('viewProformas').classList.add('hidden');
+            document.getElementById('createProforma').classList.add('hidden');
+            document.getElementById('materialManager').classList.add('hidden');
+
+            const deleteList = document.getElementById('deleteProformasList');
+            deleteList.innerHTML = '';
+
+            proformas.forEach((proforma, index) => {
+                const li = document.createElement('li');
+                li.textContent = `Proforma ${index + 1} - Cliente: ${proforma.clientName}`;
+
+                const deleteButton = document.createElement('button');
+                deleteButton.textContent = 'Eliminar';
+                deleteButton.onclick = () => deleteProforma(index);
+                li.appendChild(deleteButton);
+
+                deleteList.appendChild(li);
+            });
+        }
+
+        function deleteProforma(index) {
+            if (confirm('¿Está seguro de que desea eliminar esta proforma?')) {
+                proformas.splice(index, 1);
+                showDeleteProforma();
+            }
+        }
+
+        function saveProforma() {
+            const clientName = document.getElementById('clientName').value;
+            const inputs = document.querySelectorAll('#materialSelection input');
+
+            if (!clientName || inputs.length === 0) {
+                alert('Por favor complete todos los campos.');
+                return;
+            }
+
+            const selectedMaterials = [];
+            let totalCost = 0;
+
+            inputs.forEach(input => {
+                const quantity = parseFloat(input.value) || 0;
+                if (quantity > 0) {
+                    const material = materials[input.dataset.index];
+                    selectedMaterials.push({
+                        name: material.name,
+                        quantity,
+                        price: parseFloat(material.price)
+                    });
+                    totalCost += quantity * parseFloat(material.price);
+                }
+            });
+
+            if (selectedMaterials.length === 0) {
+                alert('Debe seleccionar al menos un material.');
+                return;
+            }
+
+            const proforma = {
+                clientName,
+                materials: selectedMaterials,
+                total: totalCost
+            };
+            proformas.push(proforma);
+            alert('Proforma guardada con éxito');
+            document.getElementById('proformaForm').reset();
+        }
+
+        function showMaterialManager() {
+            document.getElementById('materialManager').classList.remove('hidden');
+            document.getElementById('createProforma').classList.add('hidden');
+            document.getElementById('viewProformas').classList.add('hidden');
+            document.getElementById('deleteProformas').classList.add('hidden');
+
+            const materialList = document.getElementById('materialList');
+            materialList.innerHTML = '';
+
+            materials.forEach((material, index) => {
+                const li = document.createElement('li');
+                li.textContent = `${material.name} - $${material.price}`;
+
+                const deleteButton = document.createElement('button');
+                deleteButton.textContent = 'Eliminar';
+                deleteButton.onclick = () => deleteMaterial(index);
+                li.appendChild(deleteButton);
+
+                materialList.appendChild(li);
+            });
+        }
+
+        function deleteMaterial(index) {
+            if (confirm('¿Está seguro de que desea eliminar este material?')) {
+                materials.splice(index, 1);
+                showMaterialManager();
+            }
+        }
+
+        function addMaterial() {
+            const materialName = document.getElementById('materialName').value;
+            const materialPrice = document.getElementById('materialPrice').value;
+
+            if (!materialName || !materialPrice) {
+                alert('Por favor complete todos los campos.');
+                return;
+            }
+
+            materials.push({ name: materialName, price: parseFloat(materialPrice) });
+            alert('Material agregado con éxito');
+            document.getElementById('materialForm').reset();
+            showMaterialManager();
+        }
+
+        function exitApp() {
+            if (confirm('¿Está seguro de que desea salir?')) {
+                document.getElementById('app').classList.add('hidden');
+                document.getElementById('menu').classList.remove('hidden');
+                currentUser = null;
+            }
+        }
+    </script>
+</body>
+</html>
