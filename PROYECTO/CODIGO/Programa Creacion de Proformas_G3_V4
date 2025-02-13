@@ -1,0 +1,256 @@
+#include <iostream>
+#include <iomanip>
+#include <string>
+#include <vector>
+#include <limits>
+#ifdef _WIN32
+#include <conio.h> // Para ocultar la contraseña en Windows
+#else
+#include <termios.h>
+#include <unistd.h>
+char getch() {
+    struct termios oldt, newt;
+    char ch;
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+    ch = getchar();
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+    return ch;
+}
+#endif
+
+using namespace std;
+
+struct User {
+    string username;
+    string password;
+};
+
+struct Material {
+    string name;
+    float price;
+};
+
+struct Proforma {
+    string clientName;
+    vector<pair<string, pair<int, float>>> items; // Nombre del material, cantidad, costo total
+    float totalCost;
+};
+
+vector<User> users;
+vector<Material> materials;
+vector<Proforma> proformas;
+
+string getPassword() {
+    string password;
+    char ch;
+    while ((ch = getch()) != '\r' && ch != '\n') { // Captura sin mostrar en pantalla
+        if (ch == '\b' && !password.empty()) {
+            cout << "\b \b"; // Borra el caracter
+            password.pop_back();
+        } else if (ch != '\b') {
+            cout << '*';
+            password += ch;
+        }
+    }
+    cout << endl;
+    return password;
+}
+
+int getValidOption(int min, int max, bool showPrompt = true) {
+    int option;
+    while (true) {
+        if (showPrompt) {
+            cout << "Seleccione una opcion: ";
+        }
+        cin >> option;
+        if (cin.fail() || option < min || option > max) {
+            cin.clear();
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');
+            cout << "\nOpcion no valida. Intente de nuevo.\n";
+        } else {
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');
+            return option;
+        }
+    }
+}
+
+void registerUser() {
+    cout << "\n=== Registro de Usuario ===\n";
+    User newUser;
+    cout << "Ingrese nombre de usuario: ";
+    cin >> newUser.username;
+    cout << "Ingrese contrasena: ";
+    newUser.password = getPassword();
+    users.push_back(newUser);
+    cout << "Usuario registrado con exito!\n";
+}
+
+bool loginUser() {
+    string username, password;
+    cout << "\n=== Inicio de sesion ===\n";
+    cout << "Nombre de usuario: ";
+    cin >> username;
+    cout << "Contrasena: ";
+    password = getPassword();
+    for (const auto& user : users) {
+        if (user.username == username && user.password == password) {
+            cout << "\nInicio de sesion exitoso!\n";
+            return true;
+        }
+    }
+    cout << "\nUsuario o contrasena incorrectos.\n";
+    return false;
+}
+
+void addMaterial() {
+    cout << "\n=== Ingreso de Material ===\n";
+    int materialCount;
+    do {
+        cout << "Cuantos materiales desea ingresar? ";
+        materialCount = getValidOption(1, 100, false); // No mostrar "Seleccione una opcion"
+    } while (materialCount <= 0);
+
+    for (int i = 0; i < materialCount; ++i) {
+        Material newMaterial;
+        cout << "Nombre del material: ";
+        cin >> newMaterial.name;
+        do {
+            cout << "Precio del material ($): ";
+            cin >> newMaterial.price;
+            if (cin.fail() || newMaterial.price <= 0) {
+                cin.clear();
+                cin.ignore(numeric_limits<streamsize>::max(), '\n');
+                cout << "El precio debe ser un numero mayor que 0. Intente de nuevo.\n";
+            }
+        } while (cin.fail() || newMaterial.price <= 0);
+        materials.push_back(newMaterial);
+    }
+    cout << "Materiales ingresados con exito!\n";
+}
+
+void createProforma() {
+    if (materials.empty()) {
+        cout << "\nNo hay materiales disponibles para crear una proforma.\n";
+        return;
+    }
+
+    Proforma newProforma;
+    cout << "\n=== Creacion de Proforma ===\n";
+    cout << "Ingrese el nombre del cliente: ";
+    cin.ignore(); // Limpiar el buffer de entrada
+    getline(cin, newProforma.clientName);
+
+    float totalCost = 0;
+    int materialChoice;
+    do {
+        cout << "\nMateriales disponibles:\n";
+        for (size_t i = 0; i < materials.size(); i++) {
+            cout << i + 1 << ". " << materials[i].name << " - $" << materials[i].price << "\n";
+        }
+        cout << materials.size() + 1 << ". Terminar seleccion\n";
+        materialChoice = getValidOption(1, materials.size() + 1);
+        if (materialChoice > 0 && materialChoice <= materials.size()) {
+            int quantity;
+            cout << "Ingrese la cantidad: ";
+            quantity = getValidOption(1, 1000, false); // No mostrar "Seleccione una opcion"
+            float cost = materials[materialChoice - 1].price * quantity;
+            newProforma.items.push_back({materials[materialChoice - 1].name, {quantity, cost}});
+            totalCost += cost;
+        }
+    } while (materialChoice != materials.size() + 1);
+
+    newProforma.totalCost = totalCost;
+    proformas.push_back(newProforma);
+    cout << "Proforma creada con exito!\n";
+}
+
+void viewProformas() {
+    if (proformas.empty()) {
+        cout << "\nNo hay proformas disponibles.\n";
+        return;
+    }
+
+    cout << "\n=== Proformas Creadas ===\n";
+    for (size_t i = 0; i < proformas.size(); ++i) {
+        cout << "Proforma #" << i + 1 << "\n";
+        cout << "Cliente: " << proformas[i].clientName << "\n";
+        cout << "Materiales:\n";
+        for (const auto& item : proformas[i].items) {
+            cout << " - " << item.first << " (Cantidad: " << item.second.first << ", Costo: $" << item.second.second << ")\n";
+        }
+        cout << "Costo Total: $" << proformas[i].totalCost << "\n\n";
+    }
+}
+
+void deleteProforma() {
+    if (proformas.empty()) {
+        cout << "\nNo hay proformas disponibles para eliminar.\n";
+        return;
+    }
+
+    cout << "\n=== Eliminar Proforma ===\n";
+    viewProformas(); // Mostrar las proformas disponibles
+
+    int proformaChoice;
+    do {
+        cout << "Seleccione el numero de la proforma que desea eliminar (1-" << proformas.size() << "): ";
+        proformaChoice = getValidOption(1, proformas.size(), false); // No mostrar "Seleccione una opcion"
+    } while (proformaChoice < 1 || proformaChoice > proformas.size());
+
+    proformas.erase(proformas.begin() + proformaChoice - 1);
+    cout << "Proforma eliminada con exito!\n";
+}
+
+void userMenu() {
+    while (true) {
+        cout << "\n=== Menu de usuario ===\n";
+        cout << "1. Crear Proforma\n";
+        cout << "2. Ver Proformas\n";
+        cout << "3. Eliminar Proformas\n";
+        cout << "4. Agregar Material\n";
+        cout << "5. Cerrar Sesion\n";
+        int option = getValidOption(1, 5);
+        switch (option) {
+            case 1:
+                createProforma();
+                break;
+            case 2:
+                viewProformas();
+                break;
+            case 3:
+                deleteProforma();
+                break;
+            case 4:
+                addMaterial();
+                break;
+            case 5:
+                return;
+        }
+    }
+}
+
+int main() {
+    while (true) {
+        cout << "\n=== Menu Principal ===\n";
+        cout << "1. Registrar Usuario\n";
+        cout << "2. Iniciar Sesion\n";
+        cout << "3. Salir\n";
+        int option = getValidOption(1, 3);
+        switch (option) {
+            case 1:
+                registerUser();
+                break;
+            case 2:
+                if (loginUser()) {
+                    userMenu();
+                }
+                break;
+            case 3:
+                cout << "Saliendo del programa...\n";
+                return 0;
+        }
+    }
+}
