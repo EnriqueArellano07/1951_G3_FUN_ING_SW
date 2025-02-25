@@ -1,0 +1,571 @@
+#include <iostream>
+#include <iomanip>
+#include <string>
+#include <vector>
+#include <limits>
+#include <fstream>
+#include <ctime>
+#include <cstdlib> // Para system()
+#ifdef _WIN32
+#include <conio.h>
+#else
+#include <termios.h>
+#include <unistd.h>
+char getch() {
+    struct termios oldt, newt;
+    char ch;
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+    ch = getchar();
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+    return ch;
+}
+#endif
+
+using namespace std;
+
+// Estructuras de datos
+struct User {
+    string username;
+    string password;
+};
+
+struct Material {
+    string name;
+    float price;
+};
+
+struct Proforma {
+    string clientName;
+    string date; // Fecha de creación
+    vector<pair<string, pair<int, float>>> items; // Nombre del material, cantidad, costo total
+    float totalCost;
+};
+
+// Variables globales
+vector<User> users;
+vector<Material> materials;
+vector<Proforma> proformas;
+
+// Prototipos de funciones
+void clearScreen();
+void clearInputBuffer();
+string getPassword();
+int getValidOption(int min, int max, bool showPrompt = true);
+void saveData();
+void loadData();
+void registerUser();
+bool loginUser();
+void addMaterial();
+void createProforma();
+void viewProformas();
+void deleteProforma();
+void userMenu();
+
+// Función principal
+int main() {
+    loadData(); // Cargar datos al iniciar el programa
+
+    while (true) {
+        clearScreen(); // Limpia la pantalla antes de mostrar el menú principal
+        cout << "\n=== Menu Principal ===\n";
+        cout << "1. Registrar Usuario\n";
+        cout << "2. Iniciar Sesion\n";
+        cout << "3. Salir\n";
+        int option = getValidOption(1, 3);
+        switch (option) {
+            case 1:
+                clearScreen(); // Limpia la pantalla antes de registrar un usuario
+                registerUser();
+                break;
+            case 2:
+                clearScreen(); // Limpia la pantalla antes de iniciar sesión
+                if (loginUser()) {
+                    userMenu();
+                }
+                break;
+            case 3:
+                cout << "Saliendo del programa...\n";
+                return 0;
+        }
+    }
+}
+
+// Implementación de funciones
+
+void clearScreen() {
+#ifdef _WIN32
+    system("cls"); // Comando para Windows
+#else
+    system("clear"); // Comando para Linux/macOS
+#endif
+}
+
+void clearInputBuffer() {
+    cin.clear(); // Limpia los flags de error
+    cin.ignore(numeric_limits<streamsize>::max(), '\n'); // Descarta el buffer hasta el salto de línea
+}
+
+string getPassword() {
+    string password;
+    char ch;
+    while ((ch = getch()) != '\r' && ch != '\n') { // Captura sin mostrar en pantalla
+        if (ch == '\b' && !password.empty()) {
+            cout << "\b \b"; // Borra el caracter
+            password.pop_back();
+        } else if (ch != '\b') {
+            cout << '*';
+            password += ch;
+        }
+    }
+    cout << endl;
+    return password;
+}
+
+int getValidOption(int min, int max, bool showPrompt) {
+    int option;
+    while (true) {
+        if (showPrompt) {
+            cout << "Seleccione una opcion: ";
+        }
+        cin >> option;
+        if (cin.fail() || option < min || option > max) {
+            cin.clear();
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');
+            cout << "\nOpcion no valida. Intente de nuevo.\n";
+        } else {
+            clearInputBuffer(); // Limpia el buffer después de una entrada válida
+            return option;
+        }
+    }
+}
+
+void saveData() {
+    // Guardar usuarios en un archivo
+    ofstream userFile("users.txt");
+    if (userFile.is_open()) {
+        userFile << "Users:\n";
+        for (const auto& user : users) {
+            userFile << user.username << " " << user.password << "\n";
+        }
+        userFile.close();
+        cout << "Usuarios guardados correctamente en users.txt.\n";
+    } else {
+        cout << "Error al abrir el archivo para guardar los usuarios.\n";
+    }
+
+    // Guardar materiales en un archivo separado
+    ofstream materialFile("materials.txt");
+    if (materialFile.is_open()) {
+        materialFile << "Materials:\n";
+        for (const auto& material : materials) {
+            materialFile << material.name << " " << material.price << "\n";
+        }
+        materialFile.close();
+        cout << "Materiales guardados correctamente en materials.txt.\n";
+    } else {
+        cout << "Error al abrir el archivo para guardar los materiales.\n";
+    }
+
+    // Guardar proformas en un archivo separado
+    ofstream proformaFile("proformas.txt");
+    if (proformaFile.is_open()) {
+        proformaFile << "=== PROFORMAS REGISTRADAS ===\n\n";
+        for (const auto& proforma : proformas) {
+            proformaFile << "----------------------------------------\n";
+            proformaFile << "Cliente: " << proforma.clientName << "\n"; // Guardar nombre del cliente
+            proformaFile << "Fecha: " << proforma.date << "\n"; // Guardar fecha
+            proformaFile << "----------------------------------------\n";
+            proformaFile << "Materiales:\n";
+            proformaFile << setw(20) << left << "Nombre"
+                         << setw(10) << right << "Cantidad"
+                         << setw(15) << right << "Costo Unitario"
+                         << setw(15) << right << "Costo Total" << "\n";
+            proformaFile << "----------------------------------------\n";
+            for (const auto& item : proforma.items) {
+                float unitCost = item.second.second / item.second.first; // Calcular costo unitario
+                proformaFile << setw(20) << left << item.first
+                             << setw(10) << right << item.second.first
+                             << setw(15) << right << fixed << setprecision(2) << unitCost
+                             << setw(15) << right << fixed << setprecision(2) << item.second.second << "\n";
+            }
+            proformaFile << "----------------------------------------\n";
+            proformaFile << setw(45) << right << "TOTAL: $"
+                         << setw(15) << right << fixed << setprecision(2) << proforma.totalCost << "\n\n";
+        }
+        proformaFile.close();
+        cout << "Proformas guardadas correctamente en proformas.txt.\n";
+    } else {
+        cout << "Error al abrir el archivo para guardar las proformas.\n";
+    }
+}
+
+void loadData() {
+    // Cargar usuarios
+    ifstream userFile("users.txt");
+    if (userFile.is_open()) {
+        string line;
+        while (getline(userFile, line)) {
+            if (line == "Users:") {
+                while (getline(userFile, line) && !line.empty()) {
+                    User user;
+                    size_t space = line.find(' ');
+                    if (space != string::npos) {
+                        user.username = line.substr(0, space);
+                        user.password = line.substr(space + 1);
+                        users.push_back(user);
+                    } else {
+                        cerr << "Error: Formato de usuario incorrecto.\n";
+                    }
+                }
+            }
+        }
+        userFile.close();
+        cout << "Usuarios cargados correctamente desde users.txt.\n";
+    } else {
+        cout << "No se encontró el archivo de usuarios o no se pudo abrir.\n";
+    }
+
+    // Cargar materiales
+    ifstream materialFile("materials.txt");
+    if (materialFile.is_open()) {
+        string line;
+        while (getline(materialFile, line)) {
+            if (line == "Materials:") {
+                while (getline(materialFile, line) && !line.empty()) {
+                    Material material;
+                    size_t space = line.find(' ');
+                    if (space != string::npos) {
+                        material.name = line.substr(0, space);
+                        try {
+                            material.price = stof(line.substr(space + 1));
+                            materials.push_back(material);
+                        } catch (const invalid_argument& e) {
+                            cerr << "Error: No se pudo convertir el precio a número.\n";
+                        }
+                    } else {
+                        cerr << "Error: Formato de material incorrecto.\n";
+                    }
+                }
+            }
+        }
+        materialFile.close();
+        cout << "Materiales cargados correctamente desde materials.txt.\n";
+    } else {
+        cout << "No se encontró el archivo de materiales o no se pudo abrir.\n";
+    }
+
+    // Cargar proformas
+    ifstream proformaFile("proformas.txt");
+    if (proformaFile.is_open()) {
+        string line;
+        while (getline(proformaFile, line)) {
+            if (line == "=== PROFORMAS REGISTRADAS ===") {
+                while (getline(proformaFile, line)) {
+                    if (line == "----------------------------------------") {
+                        Proforma proforma;
+                        getline(proformaFile, line); // Leer "Cliente: "
+                        if (line.substr(0, 9) == "Cliente: ") {
+                            proforma.clientName = line.substr(9); // Extraer nombre del cliente
+                        } else {
+                            cerr << "Error: Formato de cliente incorrecto.\n";
+                            continue; // Saltar esta proforma
+                        }
+
+                        getline(proformaFile, line); // Leer "Fecha: "
+                        if (line.substr(0, 7) == "Fecha: ") {
+                            proforma.date = line.substr(7); // Extraer fecha
+                        } else {
+                            cerr << "Error: Formato de fecha incorrecto.\n";
+                            continue; // Saltar esta proforma
+                        }
+
+                        getline(proformaFile, line); // Leer "----------------------------------------"
+                        getline(proformaFile, line); // Leer "Materiales:"
+                        getline(proformaFile, line); // Leer encabezados de la tabla
+                        getline(proformaFile, line); // Leer "----------------------------------------"
+
+                        while (getline(proformaFile, line) && line != "----------------------------------------") {
+                            size_t space1 = line.find(' ');
+                            size_t space2 = line.find(' ', space1 + 1);
+                            size_t space3 = line.find(' ', space2 + 1);
+
+                            if (space1 == string::npos || space2 == string::npos || space3 == string::npos) {
+                                cerr << "Error: Formato de material incorrecto.\n";
+                                continue; // Saltar este material
+                            }
+
+                            string name = line.substr(0, space1);
+                            try {
+                                int quantity = stoi(line.substr(space1 + 1, space2 - space1 - 1));
+                                float cost = stof(line.substr(space3 + 1));
+                                proforma.items.push_back({name, {quantity, cost}});
+                            } catch (const invalid_argument& e) {
+                                cerr << "Error: No se pudo convertir cantidad o costo a número.\n";
+                                continue; // Saltar este material
+                            }
+                        }
+
+                        getline(proformaFile, line); // Leer "TOTAL: $"
+                        if (line.substr(0, 12) == "TOTAL: $") {
+                            try {
+                                proforma.totalCost = stof(line.substr(12));
+                            } catch (const invalid_argument& e) {
+                                cerr << "Error: No se pudo convertir el total a número.\n";
+                                continue; // Saltar esta proforma
+                            }
+                        } else {
+                            cerr << "Error: Formato de total incorrecto.\n";
+                            continue; // Saltar esta proforma
+                        }
+
+                        proformas.push_back(proforma);
+                    }
+                }
+            }
+        }
+        proformaFile.close();
+        cout << "Proformas cargadas correctamente desde proformas.txt.\n";
+    } else {
+        cout << "No se encontró el archivo de proformas o no se pudo abrir.\n";
+    }
+}
+
+void registerUser() {
+    clearScreen(); // Limpia la pantalla antes de registrar un usuario
+    cout << "\n=== Registro de Usuario ===\n";
+    User newUser;
+    cout << "Ingrese nombre de usuario: ";
+    cin >> newUser.username;
+    clearInputBuffer(); // Limpia el buffer después de la entrada
+    cout << "Ingrese contrasena: ";
+    newUser.password = getPassword();
+    users.push_back(newUser);
+    saveData();
+    cout << "Usuario registrado con exito!\n";
+#ifdef _WIN32
+    system("pause"); // Pausa en Windows
+#else
+    cout << "Presione Enter para continuar...";
+    cin.get(); // Pausa en Linux/macOS
+#endif
+}
+
+bool loginUser() {
+    clearScreen(); // Limpia la pantalla antes de iniciar sesión
+    string username, password;
+    cout << "\n=== Inicio de sesion ===\n";
+    cout << "Nombre de usuario: ";
+    cin >> username;
+    clearInputBuffer(); // Limpia el buffer después de la entrada
+    cout << "Contrasena: ";
+    password = getPassword();
+    for (const auto& user : users) {
+        if (user.username == username && user.password == password) {
+            cout << "\nInicio de sesion exitoso!\n";
+#ifdef _WIN32
+            system("pause"); // Pausa en Windows
+#else
+            cout << "Presione Enter para continuar...";
+            cin.get(); // Pausa en Linux/macOS
+#endif
+            return true;
+        }
+    }
+    cout << "\nUsuario o contrasena incorrectos.\n";
+#ifdef _WIN32
+    system("pause"); // Pausa en Windows
+#else
+    cout << "Presione Enter para continuar...";
+    cin.get(); // Pausa en Linux/macOS
+#endif
+    return false;
+}
+
+void addMaterial() {
+    clearScreen(); // Limpia la pantalla antes de agregar materiales
+    cout << "\n=== Ingreso de Material ===\n";
+    int materialCount;
+    do {
+        cout << "Cuantos materiales desea ingresar? ";
+        materialCount = getValidOption(1, 100, false); // No mostrar "Seleccione una opcion"
+    } while (materialCount <= 0);
+
+    for (int i = 0; i < materialCount; ++i) {
+        Material newMaterial;
+        cout << "Nombre del material: ";
+        cin >> newMaterial.name;
+        clearInputBuffer(); // Limpia el buffer después de la entrada
+        do {
+            cout << "Precio del material ($): ";
+            cin >> newMaterial.price;
+            if (cin.fail() || newMaterial.price <= 0) {
+                cin.clear();
+                cin.ignore(numeric_limits<streamsize>::max(), '\n');
+                cout << "El precio debe ser un numero mayor que 0. Intente de nuevo.\n";
+            }
+        } while (cin.fail() || newMaterial.price <= 0);
+        materials.push_back(newMaterial);
+    }
+    saveData();
+    cout << "Materiales ingresados con exito!\n";
+#ifdef _WIN32
+    system("pause"); // Pausa en Windows
+#else
+    cout << "Presione Enter para continuar...";
+    cin.get(); // Pausa en Linux/macOS
+#endif
+}
+
+void createProforma() {
+    clearScreen(); // Limpia la pantalla antes de crear una proforma
+    if (materials.empty()) {
+        cout << "\nNo hay materiales disponibles para crear una proforma.\n";
+#ifdef _WIN32
+        system("pause"); // Pausa en Windows
+#else
+        cout << "Presione Enter para continuar...";
+        cin.get(); // Pausa en Linux/macOS
+#endif
+        return;
+    }
+
+    Proforma newProforma;
+    cout << "\n=== Creacion de Proforma ===\n";
+    cout << "Ingrese el nombre del cliente: ";
+    clearInputBuffer(); // Limpia el buffer antes de usar getline
+    getline(cin, newProforma.clientName); // Lee el nombre del cliente
+
+    // Asignar fecha actual
+    time_t now = time(0);
+    tm* localTime = localtime(&now);
+    char buffer[80];
+    strftime(buffer, 80, "%Y-%m-%d", localTime);
+    newProforma.date = buffer;
+
+    float totalCost = 0;
+    int materialChoice;
+    do {
+        cout << "\nMateriales disponibles:\n";
+        for (size_t i = 0; i < materials.size(); i++) {
+            cout << i + 1 << ". " << materials[i].name << " - $" << materials[i].price << "\n";
+        }
+        cout << materials.size() + 1 << ". Terminar seleccion\n";
+        materialChoice = getValidOption(1, materials.size() + 1);
+        if (materialChoice > 0 && materialChoice <= materials.size()) {
+            int quantity;
+            cout << "Ingrese la cantidad: ";
+            quantity = getValidOption(1, 1000, false); // No mostrar "Seleccione una opcion"
+            float cost = materials[materialChoice - 1].price * quantity;
+            newProforma.items.push_back({materials[materialChoice - 1].name, {quantity, cost}});
+            totalCost += cost;
+        }
+    } while (materialChoice != materials.size() + 1);
+
+    newProforma.totalCost = totalCost;
+    proformas.push_back(newProforma);
+    saveData();
+    cout << "Proforma creada con exito!\n";
+#ifdef _WIN32
+    system("pause"); // Pausa en Windows
+#else
+    cout << "Presione Enter para continuar...";
+    cin.get(); // Pausa en Linux/macOS
+#endif
+}
+
+void viewProformas() {
+    clearScreen(); // Limpia la pantalla antes de ver las proformas
+    if (proformas.empty()) {
+        cout << "\nNo hay proformas disponibles.\n";
+#ifdef _WIN32
+        system("pause"); // Pausa en Windows
+#else
+        cout << "Presione Enter para continuar...";
+        cin.get(); // Pausa en Linux/macOS
+#endif
+        return;
+    }
+
+    cout << "\n=== Proformas Creadas ===\n";
+    for (size_t i = 0; i < proformas.size(); ++i) {
+        cout << "Proforma #" << i + 1 << "\n";
+        cout << "Cliente: " << proformas[i].clientName << "\n";
+        cout << "Fecha: " << proformas[i].date << "\n";
+        cout << "Materiales:\n";
+        for (const auto& item : proformas[i].items) {
+            cout << " - " << item.first << " (Cantidad: " << item.second.first << ", Costo: $" << item.second.second << ")\n";
+        }
+        cout << "Costo Total: $" << proformas[i].totalCost << "\n\n";
+    }
+#ifdef _WIN32
+    system("pause"); // Pausa en Windows
+#else
+    cout << "Presione Enter para continuar...";
+    cin.get(); // Pausa en Linux/macOS
+#endif
+}
+
+void deleteProforma() {
+    clearScreen(); // Limpia la pantalla antes de eliminar proformas
+    if (proformas.empty()) {
+        cout << "\nNo hay proformas disponibles para eliminar.\n";
+#ifdef _WIN32
+        system("pause"); // Pausa en Windows
+#else
+        cout << "Presione Enter para continuar...";
+        cin.get(); // Pausa en Linux/macOS
+#endif
+        return;
+    }
+
+    cout << "\n=== Eliminar Proforma ===\n";
+    viewProformas(); // Mostrar las proformas disponibles
+
+    int proformaChoice;
+    do {
+        cout << "Seleccione el numero de la proforma que desea eliminar (1-" << proformas.size() << "): ";
+        proformaChoice = getValidOption(1, proformas.size(), false); // No mostrar "Seleccione una opcion"
+    } while (proformaChoice < 1 || proformaChoice > proformas.size());
+
+    proformas.erase(proformas.begin() + proformaChoice - 1);
+    saveData();
+    cout << "Proforma eliminada con exito!\n";
+#ifdef _WIN32
+    system("pause"); // Pausa en Windows
+#else
+    cout << "Presione Enter para continuar...";
+    cin.get(); // Pausa en Linux/macOS
+#endif
+}
+
+void userMenu() {
+    while (true) {
+        clearScreen(); // Limpia la pantalla antes de mostrar el menú de usuario
+        cout << "\n=== Menu de usuario ===\n";
+        cout << "1. Crear Proforma\n";
+        cout << "2. Ver Proformas\n";
+        cout << "3. Eliminar Proformas\n";
+        cout << "4. Agregar Material\n";
+        cout << "5. Cerrar Sesion\n";
+        int option = getValidOption(1, 5);
+        switch (option) {
+            case 1:
+                createProforma();
+                break;
+            case 2:
+                viewProformas();
+                break;
+            case 3:
+                deleteProforma();
+                break;
+            case 4:
+                addMaterial();
+                break;
+            case 5:
+                return;
+        }
+    }
+}
